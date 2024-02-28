@@ -5,10 +5,17 @@ library(kableExtra)
 library(readxl) # for reading Excel files
 
 # Read the Excel file
-df_substrate <- read_excel("DDI template - Copy.xlsx", sheet = "Substrates for various CYPs")
-df_inhibitor <- read_excel("DDI template - Copy.xlsx", sheet = "Inhibitors for various CYPs")
-df_bloodflowparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx", sheet = "bloodflowparameters")
-df_humanphysioparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx", sheet = "humanphysiologparams")
+df_substrate <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
+                           sheet = "Substrates for various CYPs")
+
+df_inhibitor <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
+                           sheet = "Inhibitors for various CYPs")
+
+df_bloodflowparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
+                                 sheet = "bloodflowparameters")
+
+df_humanphysioparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
+                                   sheet = "humanphysiologparams")
 
 # Define UI
 ui <- fluidPage(
@@ -25,7 +32,9 @@ ui <- fluidPage(
                                      choices = unique(df_substrate[["Enzyme full"]]))),
                column(3, selectInput("dropdown3", "Select Inhibitors",
                                      choices = unique(df_inhibitor[["Enzyme full"]]))),
-               column(3, selectInput("dropdown4", "[i]", choices = NULL),
+               column(3, selectInput("dropdown4", "[i]", choices = c("Isys",
+                                                                     "Imax",
+                                                                     "Iinlet")),
                       actionButton("addrow", "Add row")) # Add row button
              ),
              mainPanel(
@@ -57,7 +66,6 @@ server <- function(input, output, session) {
                          "SUBSTRATE (VICTIM)" = 5,
                          "REVERSIBLE INHIBITOR (PERPETRATOR)" = 12,
                          "TDI" = 2,
-                         "[I]u vals" = 3,
                          "RESULTS" = 5
                          ),
                        line = TRUE) %>%
@@ -165,7 +173,7 @@ server <- function(input, output, session) {
   #apply tdi if else
   auc_ratio4 <- auc_ratio4support2 * auc_ratio4support1
 
-      new_row <- data.frame(Compound.ID = input$name,
+      new_row <- data.frame(DDI.ID = input$name,
                           substrateval = selected_row_substr$`Enzyme full`,
                           figut = selected_row_substr$fabs,
                           fgut = selected_row_substr$fgut,
@@ -189,14 +197,11 @@ server <- function(input, output, session) {
                                         selected_row_inhibtr$`Ki,u (µM)`,"NA"),
                           Kinact = ifelse(selected_row_inhibtr$`MBI/TDI` == 1,
                                           selected_row_inhibtr$`Kinact (min-1)`,"NA"),
-                          "linlet" = linlet_val,
-                          "lmax" = lmax_val,
-                          "lsys" = lsys_val,
-                          "[I]u",
-                          "AUC ratio (fgut = fabs)",
-                          "AUC ratio eqs 2,3",
-                          "AUC ratio (TDI_ eq4)",
-                          "AUC ratio (TDI_ eq4,5)"
+                          "[I]u" = Iu_val,
+                          "AUC ratio (fgut = fabs)" = auc_ratio1,
+                          "AUC ratio eqs 2,3" = auc_ratio2,
+                          "AUC ratio (TDI_ eq4)" = auc_ratio3,
+                          "AUC ratio (TDI_ eq4,5)" = auc_ratio4
                           )
     table_data(rbind(table_data(), new_row))
 
