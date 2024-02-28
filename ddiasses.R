@@ -7,6 +7,8 @@ library(readxl) # for reading Excel files
 # Read the Excel file
 df_substrate <- read_excel("DDI template - Copy.xlsx", sheet = "Substrates for various CYPs")
 df_inhibitor <- read_excel("DDI template - Copy.xlsx", sheet = "Inhibitors for various CYPs")
+df_bloodflowparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx", sheet = "bloodflowparameters")
+df_humanphysioparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx", sheet = "humanphysiologparams")
 
 # Define UI
 ui <- fluidPage(
@@ -54,7 +56,9 @@ server <- function(input, output, session) {
       add_header_above(c(" " = 1,
                          "SUBSTRATE (VICTIM)" = 5,
                          "REVERSIBLE INHIBITOR (PERPETRATOR)" = 12,
-                         "TDI" = 2
+                         "TDI" = 2,
+                         "[I]u vals" = 3,
+                         "RESULTS" = 5
                          ),
                        line = TRUE) %>%
       column_spec(1, width = "50px") # Limit the width of the first column
@@ -76,7 +80,92 @@ server <- function(input, output, session) {
     # Add the name to the first column of the table
     selected_row_substr <- df_substrate[df_substrate$`Enzyme full` == input$dropdown2, ]
     selected_row_inhibtr <- df_inhibitor[df_inhibitor$`Enzyme full` == input$dropdown3, ]
-    new_row <- data.frame(Compound.ID = input$name,
+
+    #All results calculation
+
+    #[I]u values
+
+    lsys_val <- ((selected_row_inhibtr$F *
+   selected_row_inhibtr$`Dose (mg)`) /
+   (selected_row_inhibtr$`CL/F (mL/min)` *
+     selected_row_inhibtr$`τ (h)` *
+     selected_row_inhibtr$MW * 60)) *
+   1000000
+
+ lmax_val <- ((selected_row_inhibtr$F *
+   selected_row_inhibtr$`τ (h)` *
+   60) / (1 - exp(-selected_row_inhibtr$F *
+   selected_row_inhibtr$`τ (h)` *
+   60))) * lsys_val
+
+ linlet_val <- (((selected_row_inhibtr$`Dose (mg)` *
+   selected_row_inhibtr$`ka (min-1)` *
+   selected_row_inhibtr$fabs *
+   selected_row_inhibtr$fgut) /
+   (df_bloodflowparams$Value[3] *
+     selected_row_inhibtr$MW)) * 1000000) +
+   lsys_val
+
+   Iu_val <- dplyr::case_when(
+     input$dropdown4 == "Isys" ~ lsys_val * selected_row_inhibtr$fu,
+     input$dropdown4 == "Imax" ~ lmax_val * selected_row_inhibtr$fu,
+     input$dropdown4 == "Iinlet" ~ linlet_val * selected_row_inhibtr$fu,
+     TRUE ~ NA_real_
+   )
+
+   auc_ratio1 <- (selected_row_substr$fabs/selected_row_substr$fgut) *
+     (1/(selected_row_substr$`fm (1-fe)`*
+           selected_row_substr$fmCYP3A4/
+           (1+(Iu_val/selected_row_inhibtr$`Ki,u (µM)`)) +
+           (1- selected_row_substr$`fm (1-fe)`*
+              selected_row_substr$fmCYP3A4)))
+
+   iguteq7 <- (selected_row_inhibtr$`Dose (mg)` *
+            selected_row_inhibtr$`ka (min-1)` *
+            selected_row_inhibtr$fabs /
+            (df_bloodflowparams$Value[2] *
+               selected_row_inhibtr$MW)) *
+     1000000
+
+
+   gutcontribution <- 1 / (selected_row_substr$fgut +
+                    ((1 - selected_row_substr$fgut) /
+                       (1 + (iguteq7 / selected_row_inhibtr$`Ki,u (µM)`))))
+
+  auc_ratio2 <- gutcontribution *
+    (1 / ((selected_row_substr$`fm (1-fe)` *
+             selected_row_substr$fmCYP3A4 /
+             (1 + (Iu_val / selected_row_inhibtr$`Ki,u (µM)`))) +
+            (1 - selected_row_substr$`fm (1-fe)` *
+               selected_row_substr$fmCYP3A4)))
+
+  #apply tdi if else
+  auc_ratio3 <- (selected_row_substr$fabs / selected_row_substr$fgut) *
+    (1 / ((selected_row_substr$fmCYP3A4 * selected_row_substr$`fm (1-fe)`) /
+            (1 + (selected_row_inhibtr$`Kinact (min-1)` * Iu_val /
+                    (df_humanphysioparams$`kdeg (min-1)`[6] *
+                       (selected_row_inhibtr$`Ki,u (µM)` + Iu_val))))) +
+       (1 - (selected_row_substr$fmCYP3A4 * selected_row_substr$`fm (1-fe)`)))
+
+  auc_ratio4support1 <- 1 / (selected_row_substr$fmCYP3A4 *
+                               selected_row_substr$`fm (1-fe)` /
+                               (1 + (selected_row_inhibtr$`Kinact (min-1)` *
+                                       Iu_val /
+                                       (df_humanphysioparams$`kdeg (min-1)`[6] *
+                                          (selected_row_inhibtr$`Ki,u (µM)` +
+                                             Iu_val))))) +
+                                        (1 - (selected_row_substr$fmCYP3A4 *
+                                                selected_row_substr$`fm (1-fe)`))
+  auc_ratio4support2 <- 1 / (selected_row_substr$fgut +
+                               ((1 -  selected_row_substr$fgut) /
+                                  (1 + (selected_row_inhibtr$`Kinact (min-1)` *
+                                          iguteq7 / (df_humanphysioparams$`kdeg (min-1)`[13] *
+                                                       (selected_row_inhibtr$`Ki,u (µM)` +
+                                                          iguteq7))))))
+  #apply tdi if else
+  auc_ratio4 <- auc_ratio4support2 * auc_ratio4support1
+
+      new_row <- data.frame(Compound.ID = input$name,
                           substrateval = selected_row_substr$`Enzyme full`,
                           figut = selected_row_substr$fabs,
                           fgut = selected_row_substr$fgut,
@@ -93,11 +182,21 @@ server <- function(input, output, session) {
                           f_gut = selected_row_inhibtr$fgut,
                           "F" = selected_row_inhibtr$F,
                           CLorCLF = selected_row_inhibtr$`CL/F (mL/min)`,
-                          elimrateK = "not sure",
+                          #For next, the formula and the final answer is not
+                          #matching, Need a better check
+                          elimrateK = selected_row_inhibtr$F,
                           Kiu2 = ifelse(selected_row_inhibtr$`MBI/TDI` == 1,
                                         selected_row_inhibtr$`Ki,u (µM)`,"NA"),
                           Kinact = ifelse(selected_row_inhibtr$`MBI/TDI` == 1,
-                                          selected_row_inhibtr$`Kinact (min-1)`,"NA")
+                                          selected_row_inhibtr$`Kinact (min-1)`,"NA"),
+                          "linlet" = linlet_val,
+                          "lmax" = lmax_val,
+                          "lsys" = lsys_val,
+                          "[I]u",
+                          "AUC ratio (fgut = fabs)",
+                          "AUC ratio eqs 2,3",
+                          "AUC ratio (TDI_ eq4)",
+                          "AUC ratio (TDI_ eq4,5)"
                           )
     table_data(rbind(table_data(), new_row))
 
