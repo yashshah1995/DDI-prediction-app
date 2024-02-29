@@ -181,8 +181,8 @@ server <- function(input, output, session) {
                       selected_row_inhibtr$MW * 60)) * 1e6
 
     lmax_val <- ((selected_row_inhibtr$F *
-                    selected_row_inhibtr$`τ (h)` *
-                    60) / (1 - exp(-selected_row_inhibtr$F *
+                    selected_row_inhibtr$`τ (h)` * 60) /
+                   (1 - exp(-selected_row_inhibtr$F *
                                      selected_row_inhibtr$`τ (h)` *
                                      60))) * lsys_val
 
