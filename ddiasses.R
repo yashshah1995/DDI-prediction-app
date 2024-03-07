@@ -17,6 +17,8 @@ df_bloodflowparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
 df_humanphysioparams <- read_excel("DDI template - Copy (version 1).xlsb.xlsx",
                                    sheet = "humanphysiologparams")
 
+df <- read.csv("varmap.csv")
+
 # Define UI
 ui <- fluidPage(
   titlePanel("DDI assessment tool"),
@@ -50,6 +52,63 @@ ui <- fluidPage(
   )
 )
 
+vals_cal <- function(DDI.ID, substrateval, figut, fgut, fm, fm.CYP,
+                     inhibval, MW, Dose, tau, f_uplasma, Kiu, ka_,
+                     f_abs, f_gut, Fval, CLorCLF, elimrateK, Kiu2, Kinact, ipdrop4,
+                     df_bloodflowparamsval3,
+                     df_bloodflowparamsval2,
+                     df_humanphysioparamskdeg6,
+                     df_humanphysioparamskdeg13) {
+
+  lsys_val <- ((Fval * Dose) / (CLorCLF * tau * MW * 60)) * 1e6
+
+  lmax_val <- ((Fval * tau * 60) / (1 - exp(-Fval * tau * 60))) * lsys_val
+
+  linlet_val <- (((Dose * ka_ * f_abs * f_gut) / (df_bloodflowparamsval3
+                                                  * MW)) * 1e6) + lsys_val
+
+  I_u <- dplyr::case_when(
+    ipdrop4 == "Isys"   ~ lsys_val   * f_uplasma,
+    ipdrop4 == "Imax"   ~ lmax_val   * f_uplasma,
+    ipdrop4 == "Iinlet" ~ linlet_val * f_uplasma,
+    TRUE ~ NA_real_
+  )
+
+
+  # Results
+
+  auc_ratio1 <- (figut / fgut) * (1 / (fm * fm.CYP / (1 + (I_u / Kiu)) +
+                                         (1 - fm * fm.CYP)))
+
+  iguteq7 <- (Dose * ka_ * f_abs / (df_bloodflowparamsval2 * MW)) * 1e6
+
+  gutcontribution <- 1 / (fgut + ((1 - fgut) / (1 + (iguteq7 / Kiu))))
+
+  auc_ratio2 <- gutcontribution * (1 / ((fm * fm.CYP / (1 + (I_u / Kiu))) +
+                                          (1 - fm * fm.CYP)))
+
+  # apply tdi if else
+  auc_ratio3 <- (figut / fgut) *
+    (1 / ((fm.CYP * fm) / (1 + (Kinact * I_u / (df_humanphysioparamskdeg6 *
+                                                  (Kiu + I_u))))) + (1 - (fm.CYP * fm)))
+
+  auc_ratio4support1 <- 1 / (fm.CYP * fm / (1 + (Kinact * I_u /
+                                                   (df_humanphysioparamskdeg6 * (Kiu + I_u))))) + (1 - (fm.CYP * fm))
+
+  auc_ratio4support2 <- 1 / (fgut + ((1 - fgut) / (1 + (Kinact * iguteq7 /
+                                                          (df_humanphysioparamskdeg13 * (Kiu + iguteq7))))))
+
+  # apply tdi if else
+  auc_ratio4 <- auc_ratio4support2 * auc_ratio4support1
+
+  return(list(Iu_val = I_u, auc_ratio1 = auc_ratio1,
+              auc_ratio2 = auc_ratio2, auc_ratio3 = auc_ratio3,
+               auc_ratio4 = auc_ratio4))
+
+
+}
+
+
 # Define server logic
 server <- function(input, output, session) {
 
@@ -76,131 +135,136 @@ server <- function(input, output, session) {
     HTML(table_html)
   })
 
+
   # Show a modal when the user clicks the "Add row" button
   observeEvent(input$addrow, {
     showModal(modalDialog(
-      textInput("name", "Enter a name"),
+      radioButtons("selection", "Choose input type:",
+                   choices = list("Default values" = "default", "Custom values" = "custom"),
+                   selected = "default"),
+      conditionalPanel(
+        condition = "input.selection == 'default'",
+        textInput("name1", "Enter a name")
+      ),
+      conditionalPanel(
+        condition = "input.selection == 'custom'",
+        textInput("name2", "Enter a name"),
+        numericInput(df$ids[1], df$Excel.names[1], value = 0),
+        numericInput(df$ids[2], df$Excel.names[2], value = 0),
+        numericInput(df$ids[3], df$Excel.names[3], value = 0),
+        numericInput(df$ids[4], df$Excel.names[4], value = 0),
+        numericInput(df$ids[5], df$Excel.names[5], value = 0),
+        numericInput(df$ids[6], df$Excel.names[6], value = 0),
+        numericInput(df$ids[7], df$Excel.names[7], value = 0),
+        numericInput(df$ids[8], df$Excel.names[8], value = 0),
+        numericInput(df$ids[9], df$Excel.names[9], value = 0),
+        numericInput(df$ids[10], df$Excel.names[10], value = 0),
+        numericInput(df$ids[11], df$Excel.names[11], value = 0),
+        numericInput(df$ids[13], df$Excel.names[13], value = 0),
+        numericInput(df$ids[14], df$Excel.names[14], value = 0),
+        numericInput(df$ids[16], df$Excel.names[16], value = 0),
+        numericInput(df$ids[17], df$Excel.names[17], value = 0),
+        numericInput(df$ids[20], df$Excel.names[20], value = 0),
+        numericInput(df$ids[21], df$Excel.names[21], value = 0)
+      ),
       actionButton("submit", "Submit")
     ))
   })
 
+
+
   # Observe the submit button in the modal
-  observeEvent(input$submit, {
+  observeEvent(input$submit,{
 
-    # Add the name to the first column of the table
-    selected_row_substr  <- df_substrate[df_substrate$`Enzyme full` == input$dropdown2, ]
-    selected_row_inhibtr <- df_inhibitor[df_inhibitor$`Enzyme full` == input$dropdown3, ]
+    if(input$selection == "default") {
 
-    #All results calculation
-
-    #[I]u values
-
-    lsys_val <- ((selected_row_inhibtr$F *
-                    selected_row_inhibtr$`Dose (mg)`) /
-                   (selected_row_inhibtr$`CL/F (mL/min)` *
-                      selected_row_inhibtr$`τ (h)` *
-                      selected_row_inhibtr$MW * 60)) * 1e6
-
-    lmax_val <- ((selected_row_inhibtr$F *
-                    selected_row_inhibtr$`τ (h)` * 60) /
-                   (1 - exp(-selected_row_inhibtr$F *
-                                     selected_row_inhibtr$`τ (h)` *
-                                     60))) * lsys_val
-
-    linlet_val <- (((selected_row_inhibtr$`Dose (mg)` *
-                       selected_row_inhibtr$`ka (min-1)` *
-                       selected_row_inhibtr$fabs *
-                       selected_row_inhibtr$fgut) /
-                      (df_bloodflowparams$Value[3] *
-                         selected_row_inhibtr$MW)) * 1e6) + lsys_val
-
-    Iu_val <- dplyr::case_when(
-      input$dropdown4 == "Isys"   ~ lsys_val   * selected_row_inhibtr$fu,
-      input$dropdown4 == "Imax"   ~ lmax_val   * selected_row_inhibtr$fu,
-      input$dropdown4 == "Iinlet" ~ linlet_val * selected_row_inhibtr$fu,
-      TRUE ~ NA_real_
-      )
-
-    auc_ratio1 <- (selected_row_substr$fabs / selected_row_substr$fgut) *
-      (1 / (selected_row_substr$`fm (1-fe)` *
-            selected_row_substr$fmCYP3A4 /
-            (1 + (Iu_val/selected_row_inhibtr$`Ki,u (µM)`)) +
-            (1 - selected_row_substr$`fm (1-fe)` *
-               selected_row_substr$fmCYP3A4)))
-
-    iguteq7 <- (selected_row_inhibtr$`Dose (mg)` *
-                  selected_row_inhibtr$`ka (min-1)` *
-                  selected_row_inhibtr$fabs /
-                  (df_bloodflowparams$Value[2] *
-                     selected_row_inhibtr$MW)) * 1e6
+      selected_row_substr  <- df_substrate[df_substrate$`Enzyme full` == input$dropdown2, ]
+      selected_row_inhibtr <- df_inhibitor[df_inhibitor$`Enzyme full` == input$dropdown3, ]
 
 
-    gutcontribution <- 1 / (selected_row_substr$fgut +
-                              ((1 - selected_row_substr$fgut) /
-                                 (1 + (iguteq7 /
-                                         selected_row_inhibtr$`Ki,u (µM)`))))
+      DDI.ID = input$name1
+      substrateval = selected_row_substr$`Enzyme full`
+      figut = selected_row_substr$fabs
+      fgut = selected_row_substr$fgut
+      fm = selected_row_substr$`fm (1-fe)`
+      fm.CYP = selected_row_substr$fmCYP3A4
+      inhibval = selected_row_inhibtr$`Enzyme full`
+      MW = selected_row_inhibtr$MW
+      Dose = selected_row_inhibtr$`Dose (mg)`
+      tau = selected_row_inhibtr$`τ (h)`
+      f_uplasma = selected_row_inhibtr$fu
+      Kiu = selected_row_inhibtr$`Ki,u (µM)`
+      ka_ = selected_row_inhibtr$`ka (min-1)`
+      f_abs = selected_row_inhibtr$fabs
+      f_gut = selected_row_inhibtr$fgut
+      Fval = selected_row_inhibtr$F
+      CLorCLF = selected_row_inhibtr$`CL/F (mL/min)`
+      elimrateK = selected_row_inhibtr$F
+      Kiu2 = ifelse(selected_row_inhibtr$`MBI/TDI` == 1, selected_row_inhibtr$`Ki,u (µM)`, NA)
+      Kinact = ifelse(selected_row_inhibtr$`MBI/TDI` == 1, selected_row_inhibtr$`Kinact (min-1)`, NA)
 
-    auc_ratio2 <- gutcontribution *
-      (1 / ((selected_row_substr$`fm (1-fe)` *
-               selected_row_substr$fmCYP3A4 /
-               (1 + (Iu_val / selected_row_inhibtr$`Ki,u (µM)`))) +
-              (1 - selected_row_substr$`fm (1-fe)` *
-                 selected_row_substr$fmCYP3A4)))
+    }
+    else {
 
-    #apply tdi if else
-    auc_ratio3 <- (selected_row_substr$fabs / selected_row_substr$fgut) *
-      (1 / ((selected_row_substr$fmCYP3A4 * selected_row_substr$`fm (1-fe)`) /
-              (1 + (selected_row_inhibtr$`Kinact (min-1)` * Iu_val /
-                      (df_humanphysioparams$`kdeg (min-1)`[6] *
-                         (selected_row_inhibtr$`Ki,u (µM)` + Iu_val))))) +
-         (1 - (selected_row_substr$fmCYP3A4 * selected_row_substr$`fm (1-fe)`)))
+      DDI.ID = input$name2
+      substrateval = "Custom"
+      figut = input[[df$ids[1]]]
+      fgut = input[[df$ids[2]]]
+      fm = input[[df$ids[3]]]
+      fm.CYP = input[[df$ids[4]]]
+      inhibval = "Custom"
+      MW = input[[df$ids[5]]]
+      Dose = input[[df$ids[6]]]
+      tau = input[[df$ids[7]]]
+      f_uplasma = input[[df$ids[8]]]
+      Kiu = input[[df$ids[9]]]
+      ka_ = input[[df$ids[10]]]
+      f_abs = input[[df$ids[11]]]
+      f_gut = input[[df$ids[13]]]
+      Fval = input[[df$ids[14]]]
+      CLorCLF = input[[df$ids[16]]]
+      elimrateK = input[[df$ids[17]]]
+      Kiu2 = input[[df$ids[20]]]
+      Kinact = input[[df$ids[21]]]
 
-    auc_ratio4support1 <- 1 / (selected_row_substr$fmCYP3A4 *
-                                 selected_row_substr$`fm (1-fe)` /
-                                 (1 + (selected_row_inhibtr$`Kinact (min-1)` *
-                                         Iu_val /
-                                         (df_humanphysioparams$`kdeg (min-1)`[6] *
-                                            (selected_row_inhibtr$`Ki,u (µM)` +
-                                               Iu_val))))) +
-      (1 - (selected_row_substr$fmCYP3A4 *
-              selected_row_substr$`fm (1-fe)`))
+    }
 
-    auc_ratio4support2 <- 1 / (selected_row_substr$fgut +
-                                 ((1 -  selected_row_substr$fgut) /
-                                    (1 + (selected_row_inhibtr$`Kinact (min-1)` *
-                                            iguteq7 / (df_humanphysioparams$`kdeg (min-1)`[13] *
-                                                         (selected_row_inhibtr$`Ki,u (µM)` +
-                                                            iguteq7))))))
-    #apply tdi if else
-    auc_ratio4 <- auc_ratio4support2 * auc_ratio4support1
 
-    new_row <- data.frame(DDI.ID       = input$name,
-                          substrateval = selected_row_substr$`Enzyme full`,
-                          figut        = selected_row_substr$fabs,
-                          fgut         = selected_row_substr$fgut,
-                          fm           = selected_row_substr$`fm (1-fe)`,
-                          fm.CYP       = selected_row_substr$fmCYP3A4,
-                          inhibval     = selected_row_inhibtr$`Enzyme full`,
-                          MW           = selected_row_inhibtr$MW,
-                          Dose         = selected_row_inhibtr$`Dose (mg)`,
-                          tau          = selected_row_inhibtr$`τ (h)`,
-                          f_uplasma    = selected_row_inhibtr$fu,
-                          Kiu          = selected_row_inhibtr$`Ki,u (µM)`,
-                          ka_          = selected_row_inhibtr$`ka (min-1)`,
-                          f_abs        = selected_row_inhibtr$fabs,
-                          f_gut        = selected_row_inhibtr$fgut,
-                          "F"          = selected_row_inhibtr$F,
-                          CLorCLF      = selected_row_inhibtr$`CL/F (mL/min)`,
-                          elimrateK    = selected_row_inhibtr$F, #Formula and the excel sheet answer not matching, need to check
-                          Kiu2   = ifelse(selected_row_inhibtr$`MBI/TDI` == 1,
-                                          selected_row_inhibtr$`Ki,u (µM)`, "NA"),
-                          Kinact = ifelse(selected_row_inhibtr$`MBI/TDI` == 1,
-                                          selected_row_inhibtr$`Kinact (min-1)`, "NA"),
-                          "[I]u"                    = Iu_val,
-                          "AUC ratio (fgut = fabs)" = auc_ratio1,
-                          "AUC ratio eqs 2,3"       = auc_ratio2,
-                          "AUC ratio (TDI_ eq4)"    = auc_ratio3,
-                          "AUC ratio (TDI_ eq4,5)"  = auc_ratio4
+    results <- vals_cal(DDI.ID, substrateval, figut, fgut, fm, fm.CYP,
+                                 inhibval, MW, Dose, tau, f_uplasma, Kiu, ka_,
+                                 f_abs, f_gut, Fval, CLorCLF, elimrateK, Kiu2, Kinact,
+                        input$dropdown4,
+                        df_bloodflowparams$Value[3],
+                        df_bloodflowparams$Value[2],
+                        df_humanphysioparams$`kdeg (min-1)`[6],
+                        df_humanphysioparams$`kdeg (min-1)`[13])
+
+
+    new_row <- data.frame("DDI.ID" = DDI.ID,
+                          "substrateval" = substrateval,
+                          "figut" = figut,
+                          "fgut" = fgut,
+                          "fm" = fm,
+                          "fm.CYP" = fm.CYP,
+                          "inhibval" = inhibval,
+                          "MW" = MW,
+                          "Dose" = Dose,
+                          "tau" = tau,
+                          "f_uplasma" = f_uplasma,
+                          "Kiu" = Kiu,
+                          "ka_" = ka_,
+                          "f_abs" = f_abs,
+                          "f_gut" = f_gut,
+                          "Fval" = Fval,
+                          "CLorCLF" = CLorCLF,
+                          "elimrateK" = elimrateK,
+                          "Kiu2" = Kiu2,
+                          "Kinact" = Kinact,
+                          "[I]u" = results$Iu_val,
+                          "AUC ratio (fgut = fabs)" = results$auc_ratio1,
+                          "AUC ratio eqs 2,3"       = results$auc_ratio2,
+                          "AUC ratio (TDI_ eq4)"    = results$auc_ratio3,
+                          "AUC ratio (TDI_ eq4,5)"  = results$auc_ratio4
                           )
 
     table_data(rbind(table_data(), new_row))

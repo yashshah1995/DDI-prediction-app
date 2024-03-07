@@ -1,0 +1,30 @@
+index,Excel.names,variable.names,ids
+1,figut (CYP3A) Use fabs (or a value of 1 if fabs is not available) assuming 100% inhibition_,selected_row_substr$fabs,figutCYP3AUse
+2,fgut (CYP3A)_,selected_row_substr$fgut,fgutCYP3A
+3,fm_(1-fe),selected_row_substr$`fm (1-fe)`,fm1fe
+4,"fm,CYP_",selected_row_substr$fmCYP3A4,fmCYP
+5,MW_,selected_row_inhibtr$MW,MW
+6,Dose_(mg),selected_row_inhibtr$`Dose (mg)`,Dosemg
+7,t_(h),selected_row_inhibtr$`τ (h)`,th
+8,"fu,plasma_",selected_row_inhibtr$fu,fuplasma
+9,"Ki,u_(µM)","selected_row_inhibtr$`Ki,u (µM)`",KiuµM
+10,ka (needed for Iinlet and for Eq. 3 & Eq. 5 )_(min-1),selected_row_inhibtr$`ka (min-1)`,kaneededforIi
+11,fabs (needed for Iinlet and for Eq. 3 & Eq. 5 )_,selected_row_inhibtr$fabs,fabsneededfo
+12,Igut Eq 7_(µM),iguteq7,IgutEq7µM
+13,fgut (needed only if Iinlet is used)_,selected_row_inhibtr$fgut,fgutneededonlyi
+14,F_(µM),selected_row_inhibtr$F,FµM
+15,Iinlet_(mL/min),linlet_val,IinletmLmin
+16,"CL or CL/F (if using CL/F, use F= 1 in Col O)_",selected_row_inhibtr$`CL/F (mL/min)`,CLorCLF
+17,Elim rate const - k (needed if Imax is used)_(min-1),selected_row_inhibtr$F,Elimrateconstkneede
+18,Imax (assumes instantaneous absorption)_(µM),lmax_val,Imaxassu
+19,Isys_(µM),lsys_val,IsysµM
+20,"KI,u_(µM)","selected_row_inhibtr$`Ki,u (µM)`",KIuµM
+21,kinact_(min-1),selected_row_inhibtr$`Kinact (min-1)`,kinactmin1
+22,[I]u_(µM),Iu_val,IuµM
+23,AUC ratio (Rev)  Eq 2; figut = fabs_,auc_ratio1,AUCratioRev
+24,Gut contribution to AUC ratio (Rev) Eq3_,gutcontribution,GutcontributiontoAU
+25,AUC ratio (Rev)   Eqs 2 & 3_,auc_ratio2,AUCratioRevEqs
+26,AUC ratio (TDI)   Eq 4; figut = fabs_,auc_ratio3,AUCratioTDIEq4
+27,AUC ratio (TDI) liver_,auc_ratio4support1,AUCrati
+28,Gut contribution to AUC ratio (TDI) Eq 5_,auc_ratio4support2,Gutcontributi
+29,AUC ratio (TDI)  Eqs 4 & 5_,auc_ratio4,AUCratioT
